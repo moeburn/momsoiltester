@@ -10,7 +10,7 @@
 ESP32Time rtc(0);  // offset in seconds, use 0 because NTP already offset
 #include <Preferences.h>
 Preferences prefs;
-
+#include "bitmaps/Bitmaps200x200.h"
 
 // base class GxEPD2_GFX can be used to pass references or pointers to the display instance as parameter, uses ~1.2k more code
 // enable GxEPD2_GFX base class
@@ -31,12 +31,7 @@ RTC_DATA_ATTR float maxVal = 4.2;
 RTC_DATA_ATTR int readingCount = 0; // Counter for the number of readings
 
 #include "bitmaps/Bitmaps128x250.h"
-#include <Fonts/FreeMonoBold9pt7b.h>
-#include <Fonts/Roboto_Condensed_12.h>
-#include <Fonts/FreeSerif12pt7b.h> 
-#include <Fonts/Open_Sans_Condensed_Bold_54.h> 
-#include <Fonts/DejaVu_Serif_Condensed_36.h>
-#include <Fonts/DejaVu_Serif_Condensed_60.h>
+#include <Fonts/FreeSans12pt7b.h> 
 
 // ESP32-C3 CS(SS)=7,SCL(SCK)=4,SDA(MOSI)=6,BUSY=3,RES(RST)=2,DC=1
 //GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT> display(GxEPD2_213_BN(/*CS=5*/ SS, /*DC=*/ 1, /*RES=*/ 2, /*BUSY=*/ 3)); // DEPG0213BN 122x250, SSD1680
@@ -314,7 +309,7 @@ void doDisplay() {
 
     display.firstPage();
     do {
-      //display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK);
     } while (display.nextPage());
     delay(10);
     display.firstPage();
@@ -326,33 +321,27 @@ void doDisplay() {
     display.firstPage();
     do {
         display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
-        for (int w = 0; w <= 100; w += 10) {
-          int angle = map(w, 0, 100, 240, -60); // Adjusted the angle for 0 to be left and 100 to be right
-          float rad = radians(angle);
-          int x0 = 100 + cos(rad) * 72; // 80 * 0.9 = 72
-          int y0 = 110 - sin(rad) * 72;
-          int x1 = 100 + cos(rad) * 81; // 90 * 0.9 = 81
-          int y1 = 110 - sin(rad) * 81;
-          display.drawLine(x0, y0, x1, y1, GxEPD_BLACK);
-          display.setCursor(x1 - 5, y1 - 5); // Adjusted for smaller size
-          if (w == 0) {display.print("DRY");}
-          else if (w == 100) {display.print("WET");}
-          else display.print(w);
-          
-        }
+  // Draw the needle, with radius shrunk by 10% and twice as thick
+// Draw the needle, with radius shrunk by 10% and twice as thick
+int needleAngle = map(soilPct, 0, 100, 240, -60); // Adjusted the angle mapping
+float needleRad = radians(needleAngle);
+int needleX = 100 + cos(needleRad) * 63; // 70 * 0.9 = 63
+int needleY = 105 - sin(needleRad) * 63;
 
-        // Draw the needle, with radius shrunk by 10%
-        int needleAngle = map(soilPct, 0, 100, 240, -60); // Adjusted the angle mapping
-        float needleRad = radians(needleAngle);
-        int needleX = 100 + cos(needleRad) * 63; // 70 * 0.9 = 63
-        int needleY = 110 - sin(needleRad) * 63;
-        display.drawLine(100, 110, needleX, needleY, GxEPD_BLACK);
+// Draw the thick needle using a filled rectangle to cover both vertical and horizontal cases
+int thickness = 3; // Thickness of the needle
 
-        // Display the soilPct value
-        display.setCursor(72, 126); // Adjusted for smaller size
-        
-        display.print(soilPct,0);
-          
+for (int i = -thickness; i <= thickness; i++) {
+  int offsetX = i * sin(needleRad);
+  int offsetY = i * cos(needleRad);
+  display.drawLine(100 + offsetX, 105 - offsetY, needleX + offsetX, needleY - offsetY, GxEPD_BLACK);
+}
+
+  display.fillCircle(100, 104, 7, GxEPD_WHITE);
+  // Display the soilPct value
+  display.setCursor(90, 190); // Adjusted for smaller size
+  display.print(soilPct, 0);
+  display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK);          
         
     } while (display.nextPage());
 
@@ -373,10 +362,13 @@ void setup()
   Wire.begin();  
   newVal = analogRead(0); // dry = 3750, wet = 1550
   soilPct = map(newVal, 1550, 3750, 100, 0);
+  if (soilPct < 0) {soilPct = 0;}
+  if (soilPct > 100) {soilPct = 100;}
+
   delay(10);
   display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
         display.setRotation(1);
-            display.setFont(&FreeSerif12pt7b);
+            display.setFont(&FreeSans12pt7b);
             //if (firstrun == 0) {display.clearScreen();
             //firstrun++;
             //if (firstrun > 99) {firstrun = 0;}

@@ -309,7 +309,7 @@ void doDisplay() {
 
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
     } while (display.nextPage());
     delay(10);
     display.firstPage();
@@ -321,27 +321,46 @@ void doDisplay() {
     display.firstPage();
     do {
         display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
-  // Draw the needle, with radius shrunk by 10% and twice as thick
-// Draw the needle, with radius shrunk by 10% and twice as thick
-int needleAngle = map(soilPct, 0, 100, 240, -60); // Adjusted the angle mapping
-float needleRad = radians(needleAngle);
-int needleX = 100 + cos(needleRad) * 63; // 70 * 0.9 = 63
-int needleY = 105 - sin(needleRad) * 63;
 
-// Draw the thick needle using a filled rectangle to cover both vertical and horizontal cases
+
+  // Draw the needle, with radius shrunk by 10% and twice as thick
+int centerX = 100;
+int centerY = 105;
+int radius = 63; // Shrunk radius by 10%
+int circleRadius = 9; // Radius of the circle in the middle
 int thickness = 3; // Thickness of the needle
 
+// Calculate the angle for the needle
+int needleAngle = map(soilPct, 0, 100, 240, -60);
+float needleRad = radians(needleAngle);
+
+// Calculate the end point of the needle
+int needleX = centerX + cos(needleRad) * radius;
+int needleY = centerY - sin(needleRad) * radius;
+
+// Calculate the start points on either side of the circle
+int startX1 = centerX + cos(needleRad + PI / 2) * circleRadius;
+int startY1 = centerY - sin(needleRad + PI / 2) * circleRadius;
+int startX2 = centerX + cos(needleRad - PI / 2) * circleRadius;
+int startY2 = centerY - sin(needleRad - PI / 2) * circleRadius;
+
+// Draw the thick needle using multiple parallel lines
 for (int i = -thickness; i <= thickness; i++) {
-  int offsetX = i * sin(needleRad);
-  int offsetY = i * cos(needleRad);
-  display.drawLine(100 + offsetX, 105 - offsetY, needleX + offsetX, needleY - offsetY, GxEPD_BLACK);
+  int offsetX1 = i * cos(needleRad + PI / 2);
+  int offsetY1 = i * sin(needleRad + PI / 2);
+  int offsetX2 = i * cos(needleRad - PI / 2);
+  int offsetY2 = i * sin(needleRad - PI / 2);
+  display.drawLine(startX1 + offsetX1, startY1 + offsetY1, needleX + offsetX1, needleY + offsetY1, GxEPD_BLACK);
+  display.drawLine(startX2 + offsetX2, startY2 + offsetY2, needleX + offsetX2, needleY + offsetY2, GxEPD_BLACK);
 }
 
-  display.fillCircle(100, 104, 7, GxEPD_WHITE);
+
+  display.fillCircle(100, 104, 7, GxEPD_BLACK);
   // Display the soilPct value
   display.setCursor(90, 190); // Adjusted for smaller size
   display.print(soilPct, 0);
-  display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK);          
+  display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK);   
+  display.fillCircle(100, 104, 7, GxEPD_BLACK);       
         
     } while (display.nextPage());
 

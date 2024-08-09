@@ -19,12 +19,14 @@ Preferences prefs;
 #define sleeptimeSecs 1
 #define maxArray 1500
 #define controlpin 10
-#define maximumReadings 60 // The maximum number of readings that can be stored in the available space
-#define WIFI_TIMEOUT 12000
 
+
+int GxEPD_BLACK1   = 0;
+int GxEPD_WHITE1   = 65535;
+int newVal;
 
   float t, h;
-
+RTC_DATA_ATTR float soil0[maxArray];
  RTC_DATA_ATTR   int firstrun = 100;
 RTC_DATA_ATTR float minVal = 3.9;
 RTC_DATA_ATTR float maxVal = 4.2;
@@ -32,10 +34,11 @@ RTC_DATA_ATTR int readingCount = 0; // Counter for the number of readings
 
 #include "bitmaps/Bitmaps128x250.h"
 #include <Fonts/FreeSans12pt7b.h> 
+#include <Fonts/Roboto_Condensed_12.h>
 
 // ESP32-C3 CS(SS)=7,SCL(SCK)=4,SDA(MOSI)=6,BUSY=3,RES(RST)=2,DC=1
 //GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT> display(GxEPD2_213_BN(/*CS=5*/ SS, /*DC=*/ 1, /*RES=*/ 2, /*BUSY=*/ 3)); // DEPG0213BN 122x250, SSD1680
-GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> display(GxEPD2_154_D67(/*CS=5*/ SS, /*DC=*/ 1, /*RES=*/ 2, /*BUSY=*/ 3)); // GDEH0154D67 200x200, SSD1681
+GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> display(GxEPD2_154_D67(/*CS=5*/ SS, /*DC=*/ 20, /*RES=*/ 21, /*BUSY=*/ 3)); // GDEH0154D67 200x200, SSD1681
 
 #define every(interval) \
     static uint32_t __every__##interval = millis(); \
@@ -45,232 +48,17 @@ void killwifi() {
             WiFi.disconnect(); 
 }
 
-typedef struct {
-  float temp;
-  float soil;
-  unsigned long   time;
-  float volts;
-} sensorReadings;
 
 
-float temp;
+
+float temp, volts, batwidth, soilPct;
+bool switch1 = false;
+bool switch2 = false;
 
 
 
 
 
-RTC_DATA_ATTR sensorReadings Readings[maximumReadings];
-
-bool sent = false;
-IPAddress PGIP(216,110,224,105);
-
-
-int WiFiStatus;
-WiFiClient client;
-
-
-char buffer[1024];
-PGconnection conn(&client, 0, 1024, buffer);
-
-char tosend[192];
-String tosendstr;
-
-
-const char ssid[] = "mikesnet";      //  your network SSID (name)
-const char pass[] = "springchicken";      // your network password
-
-const char user[] = "wanburst";       // your database user
-const char password[] = "elec&9";   // your database password
-const char dbname[] = "blynk_reporting";         // your database name
-
-int newVal;
-float soilPct;
-
-
-#ifndef USE_ARDUINO_ETHERNET
-void checkConnection()
-{
-    int status = WiFi.status();
-    if (status != WL_CONNECTED) {
-        if (WiFiStatus == WL_CONNECTED) {
-            Serial.println("Connection lost");
-            WiFiStatus = status;
-        }
-    }
-    else {
-        if (WiFiStatus != WL_CONNECTED) {
-            Serial.println("Connected");
-            WiFiStatus = status;
-        }
-    }
-}
-
-#endif
-
-static PROGMEM const char query_rel[] = "\
-SELECT a.attname \"Column\",\
-  pg_catalog.format_type(a.atttypid, a.atttypmod) \"Type\",\
-  case when a.attnotnull then 'not null ' else 'null' end as \"null\",\
-  (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)\
-   FROM pg_catalog.pg_attrdef d\
-   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef) \"Extras\"\
- FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c\
- WHERE a.attrelid = c.oid AND c.relkind = 'r' AND\
- c.relname = %s AND\
- pg_catalog.pg_table_is_visible(c.oid)\
- AND a.attnum > 0 AND NOT a.attisdropped\
-    ORDER BY a.attnum";
-
-static PROGMEM const char query_tables[] = "\
-SELECT n.nspname as \"Schema\",\
-  c.relname as \"Name\",\
-  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' END as \"Type\",\
-  pg_catalog.pg_get_userbyid(c.relowner) as \"Owner\"\
- FROM pg_catalog.pg_class c\
-     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\
- WHERE c.relkind IN ('r','v','m','S','f','')\
-      AND n.nspname <> 'pg_catalog'\
-      AND n.nspname <> 'information_schema'\
-      AND n.nspname !~ '^pg_toast'\
-  AND pg_catalog.pg_table_is_visible(c.oid)\
- ORDER BY 1,2";
-
-int pg_status = 0;
-
-int i;
-
-void doPg(void)
-{
-    char *msg;
-    int rc;
-    if (!pg_status) {
-        conn.setDbLogin(PGIP,
-            user,
-            password,
-            dbname,
-            "utf8");
-        pg_status = 1;
-        return;
-    }
-
-    if (pg_status == 1) {
-        rc = conn.status();
-        if (rc == CONNECTION_BAD || rc == CONNECTION_NEEDED) {
-            char *c=conn.getMessage();
-            if (c) Serial.println(c);
-            pg_status = -1;
-        }
-        else if (rc == CONNECTION_OK) {
-            pg_status = 2;
-            Serial.println("Enter query");
-        }
-        return;
-    }
-    if (pg_status == 2) {
-        if (!Serial.available()) return;
-        char inbuf[192];
-        int n = Serial.readBytesUntil('\n',inbuf,191);
-        while (n > 0) {
-            if (isspace(inbuf[n-1])) n--;
-            else break;
-        }
-        inbuf[n] = 0;
-
-        if (!strcmp(inbuf,"\\d")) {
-            if (conn.execute(query_tables, true)) goto error;
-            Serial.println("Working...");
-            pg_status = 3;
-            return;
-        }
-        if (!strncmp(inbuf,"\\d",2) && isspace(inbuf[2])) {
-            char *c=inbuf+3;
-            while (*c && isspace(*c)) c++;
-            if (!*c) {
-                if (conn.execute(query_tables, true)) goto error;
-                Serial.println("Working...");
-                pg_status = 3;
-                return;
-            }
-            if (conn.executeFormat(true, query_rel, c)) goto error;
-            Serial.println("Working...");
-            pg_status = 3;
-            return;
-        }
-
-        if (!strncmp(inbuf,"exit",4)) {
-            conn.close();
-            Serial.println("Thank you");
-            pg_status = -1;
-            return;
-        }
-        if (conn.execute(inbuf)) goto error;
-        Serial.println("Working...");
-        pg_status = 3;
-    }
-    if (pg_status == 3) {
-        rc=conn.getData();
-        if (rc < 0) goto error;
-        if (!rc) return;
-        if (rc & PG_RSTAT_HAVE_COLUMNS) {
-            for (i=0; i < conn.nfields(); i++) {
-                if (i) Serial.print(" | ");
-                Serial.print(conn.getColumn(i));
-            }
-            Serial.println("\n==========");
-        }
-        else if (rc & PG_RSTAT_HAVE_ROW) {
-            for (i=0; i < conn.nfields(); i++) {
-                if (i) Serial.print(" | ");
-                msg = conn.getValue(i);
-                if (!msg) msg=(char *)"NULL";
-                Serial.print(msg);
-            }
-            Serial.println();
-        }
-        else if (rc & PG_RSTAT_HAVE_SUMMARY) {
-            Serial.print("Rows affected: ");
-            Serial.println(conn.ntuples());
-        }
-        else if (rc & PG_RSTAT_HAVE_MESSAGE) {
-            msg = conn.getMessage();
-            if (msg) Serial.println(msg);
-        }
-        if (rc & PG_RSTAT_READY) {
-            pg_status = 2;
-            Serial.println("Enter query");
-        }
-    }
-    return;
-error:
-    msg = conn.getMessage();
-    if (msg) Serial.println(msg);
-    else Serial.println("UNKNOWN ERROR");
-    if (conn.status() == CONNECTION_BAD) {
-        Serial.println("Connection is bad");
-        pg_status = -1;
-    }
-}
-
-
-void transmitReadings() {
-  i=0;
-          while (i<maximumReadings) {
-            //if (WiFi.status() == WL_CONNECTED) {
-            doPg();
-
-
-            if ((pg_status == 2) && (i<maximumReadings)){
-              tosendstr = "insert into burst values (51,1," + String(Readings[i].time) + "," + String(Readings[i].temp,1) + "), (51,2," + String(Readings[i].time) + "," + String(Readings[i].volts,3) + "), (51,3," + String(Readings[i].time) + "," + String(Readings[i].soil,3) + ")";
-              conn.execute(tosendstr.c_str());
-              pg_status = 3;
-              delay(10);
-              i++;
-            }
-            delay(10);
-            
-          }
-          
-}
 
 void gotosleep() {
       //WiFi.disconnect();
@@ -293,6 +81,7 @@ void gotosleep() {
       //periph_module_disable(PERIPH_I2C0_MODULE);  
       //digitalWrite(SDA, 0);
       //digitalWrite(SCL, 0);
+      esp_deep_sleep_enable_gpio_wakeup(1 << 5, ESP_GPIO_WAKEUP_GPIO_LOW);
       esp_sleep_enable_timer_wakeup(sleeptimeSecs * 1000000);
       delay(1);
       esp_deep_sleep_start();
@@ -309,18 +98,18 @@ void doDisplay() {
 
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
     } while (display.nextPage());
     delay(10);
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
     } while (display.nextPage());
     
     
     display.firstPage();
     do {
-        display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
+        display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
 
 
   // Draw the needle, with radius shrunk by 10% and twice as thick
@@ -350,18 +139,95 @@ for (int i = -thickness; i <= thickness; i++) {
   int offsetY1 = i * sin(needleRad + PI / 2);
   int offsetX2 = i * cos(needleRad - PI / 2);
   int offsetY2 = i * sin(needleRad - PI / 2);
-  display.drawLine(startX1 + offsetX1, startY1 + offsetY1, needleX + offsetX1, needleY + offsetY1, GxEPD_BLACK);
-  display.drawLine(startX2 + offsetX2, startY2 + offsetY2, needleX + offsetX2, needleY + offsetY2, GxEPD_BLACK);
+  display.drawLine(startX1 + offsetX1, startY1 + offsetY1, needleX + offsetX1, needleY + offsetY1, GxEPD_BLACK1);
+  display.drawLine(startX2 + offsetX2, startY2 + offsetY2, needleX + offsetX2, needleY + offsetY2, GxEPD_BLACK1);
 }
 
 
-  display.fillCircle(100, 104, 7, GxEPD_BLACK);
+  //display.fillCircle(100, 104, 7, GxEPD_BLACK1);
   // Display the soilPct value
-  display.setCursor(90, 190); // Adjusted for smaller size
-  display.print(soilPct, 0);
-  display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK);   
-  display.fillCircle(100, 104, 7, GxEPD_BLACK);       
+  if (switch1) {
+  display.setCursor(70, 170); // Adjusted for smaller size
+  display.print((soilPct/10.0), 2);
+  display.setCursor(70, 185); // Adjusted for smaller size
+  display.print(volts, 2);
+  }
+  display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK1);   
+  display.fillCircle(100, 104, 7, GxEPD_BLACK1);       
+  display.fillRect(90, 190, batwidth, 7, GxEPD_BLACK1);
         
+    } while (display.nextPage());
+
+    display.setFullWindow();
+}
+
+void doChart() {
+       //newVal = ads.computeVolts(ads.readADC_SingleEnded(0)) * 2.0;
+    
+    // Shift the previous data points
+
+
+    // Recalculate min and max values
+    float minVal = soil0[maxArray - readingCount];
+    float maxVal = soil0[maxArray - readingCount];
+
+    for (int i = maxArray - readingCount + 1; i < maxArray; i++) {
+        if ((soil0[i] < minVal) && (soil0[i] > 0)) {
+            minVal = soil0[i];
+        }
+        if (soil0[i] > maxVal) {
+            maxVal = soil0[i];
+        }
+    }
+
+    // Calculate scaling factors
+    float yScale = 199.0 / (maxVal - minVal);
+    float xStep = 199.0 / (readingCount - 1);
+
+    // Draw the line chart
+   // display.firstPage();
+  //  do {
+   // display.fillScreen(GxEPD_WHITE);
+  //  } while (display.nextPage());
+    display.setPartialWindow(0, 0, display.width(), display.height());
+
+    display.firstPage();
+    do {
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK1);
+    } while (display.nextPage());
+    delay(10);
+    display.firstPage();
+    do {
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+    } while (display.nextPage());
+    
+    
+    display.firstPage();
+    do {
+        display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+        display.setCursor(0, 9);
+        display.print(maxVal, 3);
+        display.setCursor(0, 190);
+        display.print(minVal, 3);
+        display.setCursor(100, 190);
+        display.print(">");
+        display.print(volts, 2);
+        display.print("v, ");
+        display.print((soilPct/10.0), 2);
+        display.print("<");
+        display.setCursor(125, 9);
+        display.print("#");
+        display.print(readingCount);
+        
+        for (int i = maxArray - readingCount; i < (maxArray - 1); i++) {
+            int x0 = (i - (maxArray - readingCount)) * xStep;
+            int y0 = 199 - ((soil0[i] - minVal) * yScale);
+            int x1 = (i + 1 - (maxArray - readingCount)) * xStep;
+            int y1 = 199 - ((soil0[i + 1] - minVal) * yScale);
+            //if (soil0[i] > 0) {
+                display.drawLine(x0, y0, x1, y1, GxEPD_BLACK1);
+            //}
+        }
     } while (display.nextPage());
 
     display.setFullWindow();
@@ -375,24 +241,60 @@ long mapf(float x, float in_min, float in_max, float out_min, float out_max)
 void setup()
 {
   temp = temperatureRead();
+  volts = analogReadMilliVolts(1) / 500.0;
+
+  
+  pinMode(8, INPUT_PULLUP);
+  pinMode(5, INPUT_PULLUP);
+  pinMode(2, INPUT_PULLUP);
+  if (digitalRead(2) == LOW){switch1 = true;}
+  if (digitalRead(8) == LOW){
+    switch2 = true;
+    GxEPD_BLACK1  =   65535;
+    GxEPD_WHITE1  =   0000;
+  }
+  
+  batwidth = mapf(volts,3.6,4.0,1,18);
+  if (batwidth > 18) {batwidth = 18;}
+  if (batwidth < 0) {batwidth = 0;}
   pinMode(controlpin, OUTPUT);
   digitalWrite(controlpin, HIGH);
   delay(10);
-  Wire.begin();  
+  //Wire.begin();  
   newVal = analogRead(0); // dry = 3750, wet = 1550
-  soilPct = map(newVal, 1550, 3750, 100, 0);
+  soilPct = mapf(newVal, 1550, 3750, 100, 0);
   if (soilPct < 0) {soilPct = 0;}
   if (soilPct > 100) {soilPct = 100;}
+
+  for (int i = 0; i < (maxArray - 1); i++) { //add to array for chart drawing
+      soil0[i] = soil0[i + 1];
+  }
+  soil0[(maxArray - 1)] = (soilPct/10.0);
+
+  // Increase the reading count up to maxArray
+  if (readingCount < maxArray) {
+      readingCount++;
+  }
+
+
 
   delay(10);
   display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
         display.setRotation(1);
-            display.setFont(&FreeSans12pt7b);
-            //if (firstrun == 0) {display.clearScreen();
-            //firstrun++;
-            //if (firstrun > 99) {firstrun = 0;}
-           // }
-  display.setTextColor(GxEPD_BLACK);
+            display.setFont(&Roboto_Condensed_12);
+            display.setTextColor(GxEPD_BLACK1);
+            if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
+              display.clearScreen();
+              doChart();
+              gotosleep();
+            }
+            
+            if (firstrun == 0) {display.clearScreen();
+
+            firstrun++;
+            if (firstrun > 99) {firstrun = 0;}
+            }
+  
   
   doDisplay();
   gotosleep();

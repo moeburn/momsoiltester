@@ -3,22 +3,18 @@
 
 #include <WiFi.h>
 #include "driver/periph_ctrl.h"
-#include "nvs_flash.h"
-#include <SimplePgSQL.h>
-#include "time.h"
-#include <ESP32Time.h>
-ESP32Time rtc(0);  // offset in seconds, use 0 because NTP already offset
-#include <Preferences.h>
-Preferences prefs;
+
 #include "bitmaps/Bitmaps200x200.h"
 
 // base class GxEPD2_GFX can be used to pass references or pointers to the display instance as parameter, uses ~1.2k more code
 // enable GxEPD2_GFX base class
 #define ENABLE_GxEPD2_GFX 1
 
-#define sleeptimeSecs 1
+#define sleeptimeSecs 300
 #define maxArray 1500
 #define controlpin 10
+#define switch1pin 8
+#define switch2pin 2
 
 
 int GxEPD_BLACK1   = 0;
@@ -60,11 +56,11 @@ bool switch2 = false;
 
 
 
-void gotosleep() {
+void gotosleep(int secondsToSleep) {
       //WiFi.disconnect();
       display.hibernate();
       SPI.end();
-      Wire.end();
+      //Wire.end();
       pinMode(SS, INPUT_PULLUP );
       pinMode(6, INPUT_PULLUP );
       pinMode(4, INPUT_PULLUP );
@@ -82,7 +78,7 @@ void gotosleep() {
       //digitalWrite(SDA, 0);
       //digitalWrite(SCL, 0);
       esp_deep_sleep_enable_gpio_wakeup(1 << 5, ESP_GPIO_WAKEUP_GPIO_LOW);
-      esp_sleep_enable_timer_wakeup(sleeptimeSecs * 1000000);
+      esp_sleep_enable_timer_wakeup(secondsToSleep * 1000000);
       delay(1);
       esp_deep_sleep_start();
       //esp_light_sleep_start();
@@ -98,12 +94,12 @@ void doDisplay() {
 
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
     } while (display.nextPage());
     delay(10);
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
     } while (display.nextPage());
     
     
@@ -146,12 +142,12 @@ for (int i = -thickness; i <= thickness; i++) {
 
   //display.fillCircle(100, 104, 7, GxEPD_BLACK1);
   // Display the soilPct value
-  if (switch1) {
+  /*if (switch1) {
   display.setCursor(70, 170); // Adjusted for smaller size
   display.print((soilPct/10.0), 2);
   display.setCursor(70, 185); // Adjusted for smaller size
   display.print(volts, 2);
-  }
+  }*/
   display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK1);   
   display.fillCircle(100, 104, 7, GxEPD_BLACK1);       
   display.fillRect(90, 190, batwidth, 7, GxEPD_BLACK1);
@@ -193,12 +189,12 @@ void doChart() {
 
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK1);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK);
     } while (display.nextPage());
     delay(10);
     display.firstPage();
     do {
-      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
     } while (display.nextPage());
     
     
@@ -244,11 +240,11 @@ void setup()
   volts = analogReadMilliVolts(1) / 500.0;
 
   
-  pinMode(8, INPUT_PULLUP);
+  pinMode(switch1pin, INPUT_PULLUP);
   pinMode(5, INPUT_PULLUP);
-  pinMode(2, INPUT_PULLUP);
-  if (digitalRead(2) == LOW){switch1 = true;}
-  if (digitalRead(8) == LOW){
+  pinMode(switch2pin, INPUT_PULLUP);
+  if (digitalRead(switch2pin) == LOW){switch1 = true;}
+  if (digitalRead(switch1pin) == LOW){
     switch2 = true;
     GxEPD_BLACK1  =   65535;
     GxEPD_WHITE1  =   0000;
@@ -280,13 +276,14 @@ void setup()
 
   delay(10);
   display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
-        display.setRotation(1);
+        display.setRotation(0);
             display.setFont(&Roboto_Condensed_12);
             display.setTextColor(GxEPD_BLACK1);
             if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
               display.clearScreen();
-              doChart();
-              gotosleep();
+              if (!switch1) {doChart();}
+              else {doDisplay();}
+              gotosleep(10);
             }
             
             if (firstrun == 0) {display.clearScreen();
@@ -296,8 +293,9 @@ void setup()
             }
   
   
-  doDisplay();
-  gotosleep();
+                if (switch1) {doChart();}
+              else {doDisplay();}
+  gotosleep(sleeptimeSecs);
 
 }
 
@@ -306,7 +304,7 @@ void loop()
     //newVal = analogRead(0);
 
     doDisplay();
-    gotosleep();
+    gotosleep(sleeptimeSecs);
     // Add a delay to sample data at intervals (e.g., every minute)
     //delay(1000); // 1 minute delay, adjust as needed
 }

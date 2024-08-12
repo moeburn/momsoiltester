@@ -15,6 +15,8 @@
 #define controlpin 10
 #define switch1pin 8
 #define switch2pin 2
+#define DRY 3624 // dry = 3750, wet = 1550
+#define WET 1709
 
 
 int GxEPD_BLACK1   = 0;
@@ -211,9 +213,11 @@ void doChart() {
         display.print("v, ");
         display.print((soilPct/10.0), 2);
         display.print("<");
-        display.setCursor(125, 9);
+        display.setCursor(100, 9);
         display.print("#");
         display.print(readingCount);
+        display.print(",");
+        display.print(newVal);
         
         for (int i = maxArray - readingCount; i < (maxArray - 1); i++) {
             int x0 = (i - (maxArray - readingCount)) * xStep;
@@ -238,7 +242,7 @@ void setup()
 {
   temp = temperatureRead();
   volts = analogReadMilliVolts(1) / 500.0;
-
+  newVal = analogRead(0);
   
   pinMode(switch1pin, INPUT_PULLUP);
   pinMode(5, INPUT_PULLUP);
@@ -257,8 +261,8 @@ void setup()
   digitalWrite(controlpin, HIGH);
   delay(10);
   //Wire.begin();  
-  newVal = analogRead(0); // dry = 3750, wet = 1550
-  soilPct = mapf(newVal, 1550, 3750, 100, 0);
+   // dry = 3750, wet = 1550
+  soilPct = mapf(newVal, WET, DRY, 100, 0);
   if (soilPct < 0) {soilPct = 0;}
   if (soilPct > 100) {soilPct = 100;}
 

@@ -10,14 +10,13 @@
 // enable GxEPD2_GFX base class
 #define ENABLE_GxEPD2_GFX 1
 
-#define sleeptimeSecs 300
-#define maxArray 1500
+#define sleeptimeSecs 3600
+#define maxArray 750
 #define controlpin 10
+#define DRY 3562 // dry = 3750, wet = 1550
+#define WET 1900
 #define switch1pin 8
 #define switch2pin 2
-#define DRY 3624 // dry = 3750, wet = 1550
-#define WET 1709
-
 
 int GxEPD_BLACK1   = 0;
 int GxEPD_WHITE1   = 65535;
@@ -25,9 +24,9 @@ int newVal;
 
   float t, h;
 RTC_DATA_ATTR float soil0[maxArray];
- RTC_DATA_ATTR   int firstrun = 100;
-RTC_DATA_ATTR float minVal = 3.9;
-RTC_DATA_ATTR float maxVal = 4.2;
+RTC_DATA_ATTR float volts0[maxArray];
+ RTC_DATA_ATTR   int firstrun = 0;
+
 RTC_DATA_ATTR int readingCount = 0; // Counter for the number of readings
 
 #include "bitmaps/Bitmaps128x250.h"
@@ -80,7 +79,7 @@ void gotosleep(int secondsToSleep) {
       //digitalWrite(SDA, 0);
       //digitalWrite(SCL, 0);
       esp_deep_sleep_enable_gpio_wakeup(1 << 5, ESP_GPIO_WAKEUP_GPIO_LOW);
-      esp_sleep_enable_timer_wakeup(secondsToSleep * 1000000);
+      esp_sleep_enable_timer_wakeup(secondsToSleep * 1000000ULL);
       delay(1);
       esp_deep_sleep_start();
       //esp_light_sleep_start();
@@ -110,46 +109,44 @@ void doDisplay() {
         display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
 
 
-  // Draw the needle, with radius shrunk by 10% and twice as thick
-int centerX = 100;
-int centerY = 105;
-int radius = 63; // Shrunk radius by 10%
-int circleRadius = 9; // Radius of the circle in the middle
-int thickness = 3; // Thickness of the needle
+    // Draw the needle, with radius shrunk by 10% and twice as thick
+  int centerX = 100;
+  int centerY = 105;
+  int radius = 63; // Shrunk radius by 10%
+  int circleRadius = 9; // Radius of the circle in the middle
+  int thickness = 3; // Thickness of the needle
 
-// Calculate the angle for the needle
-int needleAngle = map(soilPct, 0, 100, 240, -60);
-float needleRad = radians(needleAngle);
+  // Calculate the angle for the needle
+  int needleAngle = map(soilPct, 0, 10, 240, -60);
+  float needleRad = radians(needleAngle);
 
-// Calculate the end point of the needle
-int needleX = centerX + cos(needleRad) * radius;
-int needleY = centerY - sin(needleRad) * radius;
+  // Calculate the end point of the needle
+  int needleX = centerX + cos(needleRad) * radius;
+  int needleY = centerY - sin(needleRad) * radius;
 
-// Calculate the start points on either side of the circle
-int startX1 = centerX + cos(needleRad + PI / 2) * circleRadius;
-int startY1 = centerY - sin(needleRad + PI / 2) * circleRadius;
-int startX2 = centerX + cos(needleRad - PI / 2) * circleRadius;
-int startY2 = centerY - sin(needleRad - PI / 2) * circleRadius;
+  // Calculate the start points on either side of the circle
+  int startX1 = centerX + cos(needleRad + PI / 2) * circleRadius;
+  int startY1 = centerY - sin(needleRad + PI / 2) * circleRadius;
+  int startX2 = centerX + cos(needleRad - PI / 2) * circleRadius;
+  int startY2 = centerY - sin(needleRad - PI / 2) * circleRadius;
 
-// Draw the thick needle using multiple parallel lines
-for (int i = -thickness; i <= thickness; i++) {
-  int offsetX1 = i * cos(needleRad + PI / 2);
-  int offsetY1 = i * sin(needleRad + PI / 2);
-  int offsetX2 = i * cos(needleRad - PI / 2);
-  int offsetY2 = i * sin(needleRad - PI / 2);
-  display.drawLine(startX1 + offsetX1, startY1 + offsetY1, needleX + offsetX1, needleY + offsetY1, GxEPD_BLACK1);
-  display.drawLine(startX2 + offsetX2, startY2 + offsetY2, needleX + offsetX2, needleY + offsetY2, GxEPD_BLACK1);
-}
+  // Draw the thick needle using multiple parallel lines
+  for (int i = -thickness; i <= thickness; i++) {
+    int offsetX1 = i * cos(needleRad + PI / 2);
+    int offsetY1 = i * sin(needleRad + PI / 2);
+    int offsetX2 = i * cos(needleRad - PI / 2);
+    int offsetY2 = i * sin(needleRad - PI / 2);
+    display.drawLine(startX1 + offsetX1, startY1 + offsetY1, needleX + offsetX1, needleY + offsetY1, GxEPD_BLACK1);
+    display.drawLine(startX2 + offsetX2, startY2 + offsetY2, needleX + offsetX2, needleY + offsetY2, GxEPD_BLACK1);
+  }
 
 
-  //display.fillCircle(100, 104, 7, GxEPD_BLACK1);
-  // Display the soilPct value
-  /*if (switch1) {
-  display.setCursor(70, 170); // Adjusted for smaller size
-  display.print((soilPct/10.0), 2);
-  display.setCursor(70, 185); // Adjusted for smaller size
-  display.print(volts, 2);
-  }*/
+
+  //display.setCursor(70, 170); // Adjusted for smaller size
+  //display.print(newVal);
+  //display.setCursor(70, 185); // Adjusted for smaller size
+  //display.print(soilPct, 2);
+
   display.drawInvertedBitmap(0, 0, momsbackdropmom, display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK1);   
   display.fillCircle(100, 104, 7, GxEPD_BLACK1);       
   display.fillRect(90, 190, batwidth, 7, GxEPD_BLACK1);
@@ -209,9 +206,7 @@ void doChart() {
         display.print(minVal, 3);
         display.setCursor(100, 190);
         display.print(">");
-        display.print(volts, 2);
-        display.print("v, ");
-        display.print((soilPct/10.0), 2);
+        display.print(soilPct, 2);
         display.print("<");
         display.setCursor(100, 9);
         display.print("#");
@@ -219,7 +214,7 @@ void doChart() {
         display.print(",");
         display.print(newVal);
         
-        for (int i = maxArray - readingCount; i < (maxArray - 1); i++) {
+        for (int i = maxArray - (readingCount); i < (maxArray - 1); i++) {
             int x0 = (i - (maxArray - readingCount)) * xStep;
             int y0 = 199 - ((soil0[i] - minVal) * yScale);
             int x1 = (i + 1 - (maxArray - readingCount)) * xStep;
@@ -233,7 +228,78 @@ void doChart() {
     display.setFullWindow();
 }
 
-long mapf(float x, float in_min, float in_max, float out_min, float out_max)
+void doBatChart() {
+       //newVal = ads.computeVolts(ads.readADC_SingleEnded(0)) * 2.0;
+    
+    // Shift the previous data points
+
+
+    // Recalculate min and max values
+    float minVal = volts0[maxArray - readingCount];
+    float maxVal = volts0[maxArray - readingCount];
+
+    for (int i = maxArray - readingCount + 1; i < maxArray; i++) {
+        if ((volts0[i] < minVal) && (volts0[i] > 0)) {
+            minVal = volts0[i];
+        }
+        if (volts0[i] > maxVal) {
+            maxVal = volts0[i];
+        }
+    }
+
+    // Calculate scaling factors
+    float yScale = 199.0 / (maxVal - minVal);
+    float xStep = 199.0 / (readingCount - 1);
+
+    // Draw the line chart
+   // display.firstPage();
+  //  do {
+   // display.fillScreen(GxEPD_WHITE);
+  //  } while (display.nextPage());
+    display.setPartialWindow(0, 0, display.width(), display.height());
+
+    display.firstPage();
+    do {
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_BLACK);
+    } while (display.nextPage());
+    delay(10);
+    display.firstPage();
+    do {
+      display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
+    } while (display.nextPage());
+    
+    
+    display.firstPage();
+    do {
+        display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE1);
+        display.setCursor(0, 9);
+        display.print(maxVal, 3);
+        display.setCursor(0, 190);
+        display.print(minVal, 3);
+        display.setCursor(100, 190);
+        display.print(">");
+        display.print(volts, 2);
+        display.print("v");
+        display.setCursor(100, 9);
+        display.print("#");
+        display.print(readingCount);
+        
+        for (int i = maxArray - (readingCount); i < (maxArray - 1); i++) {
+            int x0 = (i - (maxArray - readingCount)) * xStep;
+            int y0 = 199 - ((volts0[i] - minVal) * yScale);
+            int x1 = (i + 1 - (maxArray - readingCount)) * xStep;
+            int y1 = 199 - ((volts0[i + 1] - minVal) * yScale);
+            //if (soil0[i] > 0) {
+                display.drawLine(x0, y0, x1, y1, GxEPD_BLACK1);
+            //}
+        }
+    } while (display.nextPage());
+
+    display.setFullWindow();
+}
+
+
+double mapf(float x, float in_min, float in_max, float out_min, float out_max)
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
@@ -242,34 +308,38 @@ void setup()
 {
   temp = temperatureRead();
   volts = analogReadMilliVolts(1) / 500.0;
-  newVal = analogRead(0);
+  
   
   pinMode(switch1pin, INPUT_PULLUP);
   pinMode(5, INPUT_PULLUP);
   pinMode(switch2pin, INPUT_PULLUP);
-  if (digitalRead(switch2pin) == LOW){switch1 = true;}
+  /*if (digitalRead(switch2pin) == LOW){switch1 = true;}
   if (digitalRead(switch1pin) == LOW){
     switch2 = true;
     GxEPD_BLACK1  =   65535;
     GxEPD_WHITE1  =   0000;
-  }
+  }*/
   
   batwidth = mapf(volts,3.6,4.0,1,18);
   if (batwidth > 18) {batwidth = 18;}
   if (batwidth < 0) {batwidth = 0;}
   pinMode(controlpin, OUTPUT);
   digitalWrite(controlpin, HIGH);
-  delay(10);
+  delay(100);
+  newVal = analogRead(0);
   //Wire.begin();  
    // dry = 3750, wet = 1550
-  soilPct = mapf(newVal, WET, DRY, 100, 0);
+  soilPct = mapf(newVal, DRY, WET, 0, 10);
   if (soilPct < 0) {soilPct = 0;}
-  if (soilPct > 100) {soilPct = 100;}
+  if (soilPct > 10) {soilPct = 10;}
 
-  for (int i = 0; i < (maxArray - 1); i++) { //add to array for chart drawing
-      soil0[i] = soil0[i + 1];
-  }
-  soil0[(maxArray - 1)] = (soilPct/10.0);
+   if (firstrun > 2) {
+    for (int i = 0; i < (maxArray - 1); i++) { //add to array for chart drawing
+        soil0[i] = soil0[i + 1];
+        volts0[i] = volts0[i + 1];
+    }
+    volts0[(maxArray - 1)] = (volts);
+   }
 
   // Increase the reading count up to maxArray
   if (readingCount < maxArray) {
@@ -280,25 +350,26 @@ void setup()
 
   delay(10);
   display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
-        display.setRotation(0);
-            display.setFont(&Roboto_Condensed_12);
-            display.setTextColor(GxEPD_BLACK1);
-            if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
-              display.clearScreen();
-              if (!switch1) {doChart();}
-              else {doDisplay();}
-              gotosleep(10);
-            }
+  display.setRotation(0);
+  display.setFont(&Roboto_Condensed_12);
+  display.setTextColor(GxEPD_BLACK1);
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
+    display.clearScreen();
+    doChart();
+    esp_sleep_enable_timer_wakeup(10000000);
+    esp_sleep_enable_gpio_wakeup();
+    esp_light_sleep_start();
+    doBatChart();
+    gotosleep(10);
+  }
             
-            if (firstrun == 0) {display.clearScreen();
-
-            firstrun++;
-            if (firstrun > 99) {firstrun = 0;}
-            }
+  if (firstrun == 3) {
+    display.clearScreen();
+    firstrun++;
+    if (firstrun > 99) {firstrun = 3;}
+  }
   
-  
-                if (switch1) {doChart();}
-              else {doDisplay();}
+  doDisplay();
   gotosleep(sleeptimeSecs);
 
 }

@@ -195,6 +195,14 @@ void doChart() {
     do {
       display.fillRect(0,0,display.width(),display.height(),GxEPD_WHITE);
     } while (display.nextPage());
+
+    int startIndex = 0;
+    for (int i = 0; i < maxArray; i++) {
+        if (soil0[i] != 0) {
+            startIndex = i;
+            break;
+        }
+    }
     
     
     display.firstPage();
@@ -340,12 +348,13 @@ void setup()
     }
     volts0[(maxArray - 1)] = (volts);
     soil0[(maxArray - 1)] = (soilPct);
+    // Increase the reading count up to maxArray
+    if (readingCount < maxArray) {
+        readingCount++;
+    }
+
    }
 
-  // Increase the reading count up to maxArray
-  if (readingCount < maxArray) {
-      readingCount++;
-  }
 
 
 

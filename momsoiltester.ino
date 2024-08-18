@@ -14,7 +14,7 @@
 #define maxArray 750
 #define controlpin 10
 #define DRY 3562 // dry = 3750, wet = 1550
-#define WET 1900
+#define WET 2000
 #define switch1pin 8
 #define switch2pin 2
 
@@ -333,12 +333,13 @@ void setup()
   if (soilPct < 0) {soilPct = 0;}
   if (soilPct > 10) {soilPct = 10;}
 
-   if (firstrun > 2) {
+   if (firstrun > 1) {
     for (int i = 0; i < (maxArray - 1); i++) { //add to array for chart drawing
         soil0[i] = soil0[i + 1];
         volts0[i] = volts0[i + 1];
     }
     volts0[(maxArray - 1)] = (volts);
+    soil0[(maxArray - 1)] = (soilPct);
    }
 
   // Increase the reading count up to maxArray
@@ -356,18 +357,18 @@ void setup()
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
     display.clearScreen();
     doChart();
-    esp_sleep_enable_timer_wakeup(10000000);
+    esp_sleep_enable_timer_wakeup(10000000); //10 seconds
     esp_sleep_enable_gpio_wakeup();
     esp_light_sleep_start();
     doBatChart();
     gotosleep(10);
   }
             
-  if (firstrun == 3) {
+  if (firstrun == 2) {
     display.clearScreen();
   }
   firstrun++;
-  if (firstrun > 99) {firstrun = 3;}
+  if (firstrun > 99) {firstrun = 2;}
   doDisplay();
   gotosleep(sleeptimeSecs);
 

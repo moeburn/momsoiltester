@@ -117,18 +117,18 @@ void doDisplay() {
   int thickness = 3; // Thickness of the needle
 
   // Calculate the angle for the needle
-  int needleAngle = map(soilPct, 0, 10, 240, -60);
+  float needleAngle = mapf(soilPct, 0, 10, 240, -60);
   float needleRad = radians(needleAngle);
 
   // Calculate the end point of the needle
-  int needleX = centerX + cos(needleRad) * radius;
-  int needleY = centerY - sin(needleRad) * radius;
+  float needleX = centerX + cos(needleRad) * radius;
+  float needleY = centerY - sin(needleRad) * radius;
 
   // Calculate the start points on either side of the circle
-  int startX1 = centerX + cos(needleRad + PI / 2) * circleRadius;
-  int startY1 = centerY - sin(needleRad + PI / 2) * circleRadius;
-  int startX2 = centerX + cos(needleRad - PI / 2) * circleRadius;
-  int startY2 = centerY - sin(needleRad - PI / 2) * circleRadius;
+  float startX1 = centerX + cos(needleRad + PI / 2) * circleRadius;
+  float startY1 = centerY - sin(needleRad + PI / 2) * circleRadius;
+  float startX2 = centerX + cos(needleRad - PI / 2) * circleRadius;
+  float startY2 = centerY - sin(needleRad - PI / 2) * circleRadius;
 
   // Draw the thick needle using multiple parallel lines
   for (int i = -thickness; i <= thickness; i++) {
@@ -365,10 +365,9 @@ void setup()
             
   if (firstrun == 3) {
     display.clearScreen();
-    firstrun++;
-    if (firstrun > 99) {firstrun = 3;}
   }
-  
+  firstrun++;
+  if (firstrun > 99) {firstrun = 3;}
   doDisplay();
   gotosleep(sleeptimeSecs);
 

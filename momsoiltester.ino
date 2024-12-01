@@ -359,20 +359,37 @@ void setup()
 
 
   delay(10);
+
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
+      while (!digitalRead(5))
+        {
+          delay(10);
+          if (millis() > 2000) {
+                display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
+  display.setRotation(0);
+  display.setFont(&Roboto_Condensed_12);
+  display.setTextColor(GxEPD_BLACK1);
+              doChart();
+              delay(5000);
+              doBatChart();
+              delay(5000);
+              display.clearScreen();
+              doDisplay();
+              gotosleep(1);
+          }
+        }
   display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
   display.setRotation(0);
   display.setFont(&Roboto_Condensed_12);
   display.setTextColor(GxEPD_BLACK1);
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) {
     display.clearScreen();
-    doChart();
-    esp_sleep_enable_timer_wakeup(10000000); //10 seconds
-    esp_sleep_enable_gpio_wakeup();
-    esp_light_sleep_start();
-    doBatChart();
-    gotosleep(10);
+    doDisplay();
+    gotosleep(1);
   }
-            
+    display.init(115200, false, 10, false); // void init(uint32_t serial_diag_bitrate, bool initial, uint16_t reset_duration = 10, bool pulldown_rst_mode = false)
+  display.setRotation(0);
+  display.setFont(&Roboto_Condensed_12);
+  display.setTextColor(GxEPD_BLACK1);          
   if (firstrun == 2) {
     display.clearScreen();
   }
